@@ -23,40 +23,40 @@ type glusterfsDriver struct {
 	restClient *rest.Client
 	servers    []string
 	volumes    map[string]*volumeName
-	m          *sync.Mutex
+	mutex      *sync.Mutex
 }
 
 func newGlusterfsDriver(root, restAddress, gfsBase string, servers []string) glusterfsDriver {
-	d := glusterfsDriver{
+	driver := glusterfsDriver{
 		root:    root,
 		servers: servers,
 		volumes: map[string]*volumeName{},
-		m:       &sync.Mutex{},
+		mutex:   &sync.Mutex{},
 	}
 	if len(restAddress) > 0 {
-		d.restClient = rest.NewClient(restAddress, gfsBase)
+		driver.restClient = rest.NewClient(restAddress, gfsBase)
 	}
-	return d
+	return driver
 }
 
-func (d glusterfsDriver) Create(r volume.Request) volume.Response {
-	log.Printf("Creating volume %s\n", r.Name)
-	d.m.Lock()
-	defer d.m.Unlock()
-	m := d.mountpoint(r.Name)
+func (driver glusterfsDriver) Create(request volume.Request) volume.Response {
+	log.Printf("Creating volume %s\n", request.Name)
+	driver.mutex.Lock()
+	defer driver.mutex.Unlock()
+	mount := driver.mountpoint(request.Name)
 
-	if _, ok := d.volumes[m]; ok {
+	if _, ok := driver.volumes[mount]; ok {
 		return volume.Response{}
 	}
 
-	if d.restClient != nil {
-		exist, err := d.restClient.VolumeExist(r.Name)
+	if driver.restClient != nil {
+		exist, err := driver.restClient.VolumeExist(request.Name)
 		if err != nil {
 			return volume.Response{Err: err.Error()}
 		}
 
 		if !exist {
-			if err := d.restClient.CreateVolume(r.Name, d.servers); err != nil {
+			if err := driver.restClient.CreateVolume(request.Name, driver.servers); err != nil {
 				return volume.Response{Err: err.Error()}
 			}
 		}
@@ -64,45 +64,45 @@ func (d glusterfsDriver) Create(r volume.Request) volume.Response {
 	return volume.Response{}
 }
 
-func (d glusterfsDriver) Remove(r volume.Request) volume.Response {
-	log.Printf("Removing volume %s\n", r.Name)
-	d.m.Lock()
-	defer d.m.Unlock()
-	m := d.mountpoint(r.Name)
+func (driver glusterfsDriver) Remove(request volume.Request) volume.Response {
+	log.Printf("Removing volume %s\n", request.Name)
+	driver.mutex.Lock()
+	defer driver.mutex.Unlock()
+	mount := driver.mountpoint(request.Name)
 
-	if s, ok := d.volumes[m]; ok {
+	if s, ok := driver.volumes[mount]; ok {
 		if s.connections <= 1 {
-			if d.restClient != nil {
-				if err := d.restClient.StopVolume(r.Name); err != nil {
+			if driver.restClient != nil {
+				if err := driver.restClient.StopVolume(request.Name); err != nil {
 					return volume.Response{Err: err.Error()}
 				}
 			}
-			delete(d.volumes, m)
+			delete(driver.volumes, mount)
 		}
 	}
 	return volume.Response{}
 }
 
-func (d glusterfsDriver) Path(r volume.Request) volume.Response {
-	return volume.Response{Mountpoint: d.mountpoint(r.Name)}
+func (driver glusterfsDriver) Path(request volume.Request) volume.Response {
+	return volume.Response{Mountpoint: driver.mountpoint(request.Name)}
 }
 
-func (d glusterfsDriver) Mount(r volume.MountRequest) volume.Response {
-	d.m.Lock()
-	defer d.m.Unlock()
-	m := d.mountpoint(r.Name)
-	log.Printf("Mounting volume %s on %s\n", r.Name, m)
+func (driver glusterfsDriver) Mount(request volume.MountRequest) volume.Response {
+	driver.mutex.Lock()
+	defer driver.mutex.Unlock()
+	mount := driver.mountpoint(request.Name)
+	log.Printf("Mounting volume %s on %s\n", request.Name, mount)
 
-	s, ok := d.volumes[m]
+	s, ok := driver.volumes[mount]
 	if ok && s.connections > 0 {
 		s.connections++
-		return volume.Response{Mountpoint: m}
+		return volume.Response{Mountpoint: mount}
 	}
 
-	fi, err := os.Lstat(m)
+	fi, err := os.Lstat(mount)
 
 	if os.IsNotExist(err) {
-		if err := os.MkdirAll(m, 0755); err != nil {
+		if err := os.MkdirAll(mount, 0755); err != nil {
 			return volume.Response{Err: err.Error()}
 		}
 	} else if err != nil {
@@ -110,66 +110,66 @@ func (d glusterfsDriver) Mount(r volume.MountRequest) volume.Response {
 	}
 
 	if fi != nil && !fi.IsDir() {
-		return volume.Response{Err: fmt.Sprintf("%v already exist and it's not a directory", m)}
+		return volume.Response{Err: fmt.Sprintf("%v already exist and it's not a directory", mount)}
 	}
 
-	if err := d.mountVolume(r.Name, m); err != nil {
+	if err := driver.mountVolume(request.Name, mount); err != nil {
 		return volume.Response{Err: err.Error()}
 	}
 
-	d.volumes[m] = &volumeName{name: r.Name, connections: 1}
+	driver.volumes[mount] = &volumeName{name: request.Name, connections: 1}
 
-	return volume.Response{Mountpoint: m}
+	return volume.Response{Mountpoint: mount}
 }
 
-func (d glusterfsDriver) Unmount(r volume.UnmountRequest) volume.Response {
-	d.m.Lock()
-	defer d.m.Unlock()
-	m := d.mountpoint(r.Name)
-	log.Printf("Unmounting volume %s from %s\n", r.Name, m)
+func (driver glusterfsDriver) Unmount(request volume.UnmountRequest) volume.Response {
+	driver.mutex.Lock()
+	defer driver.mutex.Unlock()
+	mount := driver.mountpoint(request.Name)
+	log.Printf("Unmounting volume %s from %s\n", request.Name, mount)
 
-	if s, ok := d.volumes[m]; ok {
+	if s, ok := driver.volumes[mount]; ok {
 		if s.connections == 1 {
-			if err := d.unmountVolume(m); err != nil {
+			if err := driver.unmountVolume(mount); err != nil {
 				return volume.Response{Err: err.Error()}
 			}
 		}
 		s.connections--
 	} else {
-		return volume.Response{Err: fmt.Sprintf("Unable to find volume mounted on %s", m)}
+		return volume.Response{Err: fmt.Sprintf("Unable to find volume mounted on %s", mount)}
 	}
 
 	return volume.Response{}
 }
 
-func (d glusterfsDriver) Get(r volume.Request) volume.Response {
-	d.m.Lock()
-	defer d.m.Unlock()
-	m := d.mountpoint(r.Name)
-	if s, ok := d.volumes[m]; ok {
-		return volume.Response{Volume: &volume.Volume{Name: s.name, Mountpoint: d.mountpoint(s.name)}}
+func (driver glusterfsDriver) Get(request volume.Request) volume.Response {
+	driver.mutex.Lock()
+	defer driver.mutex.Unlock()
+	mount := driver.mountpoint(request.Name)
+	if s, ok := driver.volumes[mount]; ok {
+		return volume.Response{Volume: &volume.Volume{Name: s.name, Mountpoint: driver.mountpoint(s.name)}}
 	}
 
-	return volume.Response{Err: fmt.Sprintf("Unable to find volume mounted on %s", m)}
+	return volume.Response{Err: fmt.Sprintf("Unable to find volume mounted on %s", mount)}
 }
 
-func (d glusterfsDriver) List(r volume.Request) volume.Response {
-	d.m.Lock()
-	defer d.m.Unlock()
+func (driver glusterfsDriver) List(request volume.Request) volume.Response {
+	driver.mutex.Lock()
+	defer driver.mutex.Unlock()
 	var vols []*volume.Volume
-	for _, v := range d.volumes {
-		vols = append(vols, &volume.Volume{Name: v.name, Mountpoint: d.mountpoint(v.name)})
+	for _, v := range driver.volumes {
+		vols = append(vols, &volume.Volume{Name: v.name, Mountpoint: driver.mountpoint(v.name)})
 	}
 	return volume.Response{Volumes: vols}
 }
 
-func (d *glusterfsDriver) mountpoint(name string) string {
-	return filepath.Join(d.root, name)
+func (driver *glusterfsDriver) mountpoint(name string) string {
+	return filepath.Join(driver.root, name)
 }
 
-func (d *glusterfsDriver) mountVolume(name, destination string) error {
+func (driver *glusterfsDriver) mountVolume(name, destination string) error {
 	var serverNodes []string
-	for _, server := range d.servers {
+	for _, server := range driver.servers {
 		serverNodes = append(serverNodes, fmt.Sprintf("-s %s", server))
 	}
 
@@ -181,7 +181,7 @@ func (d *glusterfsDriver) mountVolume(name, destination string) error {
 	return nil
 }
 
-func (d *glusterfsDriver) unmountVolume(target string) error {
+func (driver *glusterfsDriver) unmountVolume(target string) error {
 	cmd := fmt.Sprintf("umount %s", target)
 	if out, err := exec.Command("sh", "-c", cmd).CombinedOutput(); err != nil {
 		log.Println(string(out))
@@ -190,7 +190,7 @@ func (d *glusterfsDriver) unmountVolume(target string) error {
 	return nil
 }
 
-func (d glusterfsDriver) Capabilities(r volume.Request) volume.Response {
+func (driver glusterfsDriver) Capabilities(request volume.Request) volume.Response {
 	var res volume.Response
 	res.Capabilities = volume.Capability{Scope: "local"}
 	return res

@@ -61,8 +61,8 @@ func NewClient(addr, base string) *Client {
 }
 
 // VolumeExist returns whether a volume exist in the cluster with a given name or not.
-func (r Client) VolumeExist(name string) (bool, error) {
-	vols, err := r.volumes()
+func (client Client) VolumeExist(name string) (bool, error) {
+	vols, err := client.volumes()
 	if err != nil {
 		return false, err
 	}
@@ -76,8 +76,8 @@ func (r Client) VolumeExist(name string) (bool, error) {
 	return false, nil
 }
 
-func (r Client) volumes() ([]volume, error) {
-	u := fmt.Sprintf("%s%s", r.addr, volumesPath)
+func (client Client) volumes() ([]volume, error) {
+	u := fmt.Sprintf("%s%s", client.addr, volumesPath)
 
 	res, err := http.Get(u)
 	if err != nil {
@@ -96,13 +96,13 @@ func (r Client) volumes() ([]volume, error) {
 }
 
 // CreateVolume creates a new volume with the given name in the cluster.
-func (r Client) CreateVolume(name string, peers []string) error {
-	u := fmt.Sprintf("%s%s", r.addr, fmt.Sprintf(volumeCreatePath, name))
+func (client Client) CreateVolume(name string, peers []string) error {
+	u := fmt.Sprintf("%s%s", client.addr, fmt.Sprintf(volumeCreatePath, name))
 	fmt.Println(u)
 
 	bricks := make([]string, len(peers))
 	for i, p := range peers {
-		bricks[i] = fmt.Sprintf("%s:%s", p, filepath.Join(r.base, name))
+		bricks[i] = fmt.Sprintf("%s:%s", p, filepath.Join(client.base, name))
 	}
 
 	params := url.Values{
@@ -122,8 +122,8 @@ func (r Client) CreateVolume(name string, peers []string) error {
 }
 
 // StopVolume stops the volume with the given name in the cluster.
-func (r Client) StopVolume(name string) error {
-	u := fmt.Sprintf("%s%s", r.addr, fmt.Sprintf(volumeStopPath, name))
+func (client Client) StopVolume(name string) error {
+	u := fmt.Sprintf("%s%s", client.addr, fmt.Sprintf(volumeStopPath, name))
 
 	req, err := http.NewRequest("PUT", u, nil)
 	if err != nil {
