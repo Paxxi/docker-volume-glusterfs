@@ -1,7 +1,6 @@
 package glusterfs
 
 import (
-	"fmt"
 	"log"
 	"os/exec"
 	"strings"
@@ -56,14 +55,14 @@ func (client GlusterClient) Volumes() ([]GlusterVolume, error) {
 
 // Mount takes the server, volume and mountPath and mounts the gluster volume at the specified path
 func (client GlusterClient) Mount(servers []string, volume string, mountPath string) error {
-	serverNodes := make([]string, len(servers))
+	args := make([]string, 2*len(servers)+3)
+
+	args = append(args, "--volfile-id", volume, mountPath)
 	for _, server := range servers {
-		serverNodes = append(serverNodes, fmt.Sprintf("-s '%s'", server))
+		args = append(args, "-s", server)
 	}
 	// volID := fmt.Sprintf("--volfile-id %s", volume)
-	command := exec.Command("/usr/sbin/glusterfs", "-s", servers[0], "--volfile-id", volume, mountPath)
-	log.Println(len(command.Args))
-	log.Println(strings.Join(command.Args, " "))
+	command := exec.Command("/usr/sbin/glusterfs", args...)
 	err := command.Run()
 	if err != nil {
 		log.Println(err.Error())
