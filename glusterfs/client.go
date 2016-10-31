@@ -57,11 +57,13 @@ func (client GlusterClient) Volumes() ([]GlusterVolume, error) {
 func (client GlusterClient) Mount(servers []string, volume string, mountPath string) error {
 	args := make([]string, 2*len(servers)+3)
 
-	args = append(args, "--volfile-id", volume, mountPath)
+	args = append(args, "--volfile-id", volume)
 	for _, server := range servers {
 		args = append(args, "-s", server)
 	}
-	// volID := fmt.Sprintf("--volfile-id %s", volume)
+
+	// mount path needs to be last
+	args = append(args, mountPath)
 	command := exec.Command("/usr/sbin/glusterfs", args...)
 	err := command.Run()
 	if err != nil {
