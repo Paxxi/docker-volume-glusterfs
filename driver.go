@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 
-	"github.com/calavera/docker-volume-glusterfs/rest"
+	"github.com/Paxxi/docker-volume-glusterfs/glusterfs"
 	"github.com/docker/go-plugins-helpers/volume"
 )
 
@@ -19,22 +18,24 @@ type volumeName struct {
 }
 
 type glusterfsDriver struct {
-	root       string
-	restClient *rest.Client
-	servers    []string
-	volumes    map[string]*volumeName
-	mutex      *sync.Mutex
+	volumeId    string
+	mountPath   string
+	client      glusterfs.GlusterClient
+	servers     []string
+	volumes     map[string]*volumeName
+	connections int
+	mutex       *sync.Mutex
 }
 
-func newGlusterfsDriver(root, restAddress, gfsBase string, servers []string) glusterfsDriver {
+func newGlusterfsDriver(volumeID, mountPath string, servers []string) glusterfsDriver {
 	driver := glusterfsDriver{
-		root:    root,
-		servers: servers,
-		volumes: map[string]*volumeName{},
-		mutex:   &sync.Mutex{},
-	}
-	if len(restAddress) > 0 {
-		driver.restClient = rest.NewClient(restAddress, gfsBase)
+		volumeId:    volumeID,
+		mountPath:   mountPath,
+		client:      glusterfs.NewClient(),
+		servers:     servers,
+		volumes:     map[string]*volumeName{},
+		connections: 0,
+		mutex:       &sync.Mutex{},
 	}
 	return driver
 }
@@ -49,17 +50,13 @@ func (driver glusterfsDriver) Create(request volume.Request) volume.Response {
 		return volume.Response{}
 	}
 
-	if driver.restClient != nil {
-		exist, err := driver.restClient.VolumeExist(request.Name)
-		if err != nil {
-			return volume.Response{Err: err.Error()}
-		}
+	exist, err := driver.client.VolumeExist(request.Name)
+	if err != nil {
+		return volume.Response{Err: err.Error()}
+	}
 
-		if !exist {
-			if err := driver.restClient.CreateVolume(request.Name, driver.servers); err != nil {
-				return volume.Response{Err: err.Error()}
-			}
-		}
+	if !exist {
+		return volume.Response{Err: err.Error()}
 	}
 	return volume.Response{}
 }
@@ -72,10 +69,8 @@ func (driver glusterfsDriver) Remove(request volume.Request) volume.Response {
 
 	if s, ok := driver.volumes[mount]; ok {
 		if s.connections <= 1 {
-			if driver.restClient != nil {
-				if err := driver.restClient.StopVolume(request.Name); err != nil {
-					return volume.Response{Err: err.Error()}
-				}
+			if err := driver.client.Unmount(mount); err != nil {
+				return volume.Response{Err: err.Error()}
 			}
 			delete(driver.volumes, mount)
 		}
@@ -113,10 +108,6 @@ func (driver glusterfsDriver) Mount(request volume.MountRequest) volume.Response
 		return volume.Response{Err: fmt.Sprintf("%v already exist and it's not a directory", mount)}
 	}
 
-	if err := driver.mountVolume(request.Name, mount); err != nil {
-		return volume.Response{Err: err.Error()}
-	}
-
 	driver.volumes[mount] = &volumeName{name: request.Name, connections: 1}
 
 	return volume.Response{Mountpoint: mount}
@@ -129,11 +120,6 @@ func (driver glusterfsDriver) Unmount(request volume.UnmountRequest) volume.Resp
 	log.Printf("Unmounting volume %s from %s\n", request.Name, mount)
 
 	if s, ok := driver.volumes[mount]; ok {
-		if s.connections == 1 {
-			if err := driver.unmountVolume(mount); err != nil {
-				return volume.Response{Err: err.Error()}
-			}
-		}
 		s.connections--
 	} else {
 		return volume.Response{Err: fmt.Sprintf("Unable to find volume mounted on %s", mount)}
@@ -164,34 +150,31 @@ func (driver glusterfsDriver) List(request volume.Request) volume.Response {
 }
 
 func (driver *glusterfsDriver) mountpoint(name string) string {
-	return filepath.Join(driver.root, name)
+	return filepath.Join(driver.volumeId, name)
 }
 
-func (driver *glusterfsDriver) mountVolume(name, destination string) error {
-	var serverNodes []string
-	for _, server := range driver.servers {
-		serverNodes = append(serverNodes, fmt.Sprintf("-s %s", server))
-	}
-
-	cmd := fmt.Sprintf("glusterfs --volfile-id=%s %s %s", name, strings.Join(serverNodes[:], " "), destination)
-	if out, err := exec.Command("sh", "-c", cmd).CombinedOutput(); err != nil {
-		log.Println(string(out))
+func (driver *glusterfsDriver) mountVolume() error {
+	err := driver.client.Mount(driver.servers, driver.volumeId, driver.mountPath)
+	if err != nil {
+		log.Println(fmt.Sprintf("Failed to mount volume %s at %s from servers %s", driver.volumeId, driver.mountPath, strings.Join(driver.servers, ", ")))
 		return err
 	}
+
 	return nil
 }
 
-func (driver *glusterfsDriver) unmountVolume(target string) error {
-	cmd := fmt.Sprintf("umount %s", target)
-	if out, err := exec.Command("sh", "-c", cmd).CombinedOutput(); err != nil {
-		log.Println(string(out))
+func (driver *glusterfsDriver) unmountVolume() error {
+	err := driver.client.Unmount(driver.mountPath)
+	if err != nil {
+		log.Println("Failed to unmount volume: ", driver.mountPath)
 		return err
 	}
+
 	return nil
 }
 
 func (driver glusterfsDriver) Capabilities(request volume.Request) volume.Response {
 	var res volume.Response
-	res.Capabilities = volume.Capability{Scope: "local"}
+	res.Capabilities = volume.Capability{Scope: "global"}
 	return res
 }

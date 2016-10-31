@@ -15,7 +15,6 @@ const glusterfsID = "_glusterfs"
 var (
 	defaultDir  = filepath.Join(volume.DefaultDockerRootDirectory, glusterfsID)
 	serversList = flag.String("servers", "", "List of glusterfs servers")
-	restAddress = flag.String("rest", "", "URL to glusterfsrest api")
 	gfsBase     = flag.String("gfs-base", "/mnt/gfs", "Base directory where volumes are created in the cluster")
 	root        = flag.String("root", defaultDir, "GlusterFS volumes root directory")
 )
@@ -34,7 +33,16 @@ func main() {
 
 	servers := strings.Split(*serversList, ":")
 
-	driver := newGlusterfsDriver(*root, *restAddress, *gfsBase, servers)
+	driver := newGlusterfsDriver(*root, *gfsBase, servers)
 	handler := volume.NewHandler(driver)
+	err := driver.mountVolume()
+	if err != nil {
+		os.Exit(1)
+	}
 	fmt.Println(handler.ServeUnix("root", "glusterfs"))
+
+	err = driver.unmountVolume()
+	if err != nil {
+		os.Exit(1)
+	}
 }
