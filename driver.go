@@ -120,11 +120,13 @@ func (driver glusterfsDriver) List(request volume.Request) volume.Response {
 	if err != nil {
 		return volume.Response{Err: err.Error()}
 	}
-	vols := make([]*volume.Volume, len(fileList))
+	vols := make([]*volume.Volume, 0)
 
 	for _, fi := range fileList {
 		if fi.IsDir() {
-			vols = append(vols, &volume.Volume{Name: fi.Name(), Mountpoint: driver.mountpoint(fi.Name())})
+			mount := driver.mountpoint(fi.Name())
+			log.Printf("Found dir %s with mountpoint %s\n", fi.Name(), mount)
+			vols = append(vols, &volume.Volume{Name: fi.Name(), Mountpoint: mount})
 		}
 	}
 	return volume.Response{Volumes: vols}
