@@ -55,7 +55,7 @@ func (client GlusterClient) Volumes() ([]GlusterVolume, error) {
 
 // Mount takes the server, volume and mountPath and mounts the gluster volume at the specified path
 func (client GlusterClient) Mount(servers []string, volume string, mountPath string) error {
-	args := make([]string, 2*len(servers)+3)
+	args := make([]string, 0)
 
 	args = append(args, "--volfile-id", volume)
 	for _, server := range servers {
@@ -65,6 +65,7 @@ func (client GlusterClient) Mount(servers []string, volume string, mountPath str
 	// mount path needs to be last
 	args = append(args, mountPath)
 	command := exec.Command("/usr/sbin/glusterfs", args...)
+	log.Printf("Trying to mount using command %s %s", command.Path, strings.Join(command.Args, " "))
 	err := command.Run()
 	if err != nil {
 		log.Println(err.Error())
