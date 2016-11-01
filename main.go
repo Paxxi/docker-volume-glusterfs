@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"log"
+
 	"github.com/docker/go-plugins-helpers/volume"
 )
 
@@ -35,7 +37,15 @@ func main() {
 
 	driver := newGlusterfsDriver(*root, *gfsBase, servers)
 	handler := volume.NewHandler(driver)
-	err := driver.mountVolume()
+
+	// Try to unmount if there's anything mounted at our path
+	// We don't care about an error as any issues will fail when mounting
+	err := driver.unmountVolume()
+	if err != nil {
+		log.Println(err.Error())
+	}
+
+	err = driver.mountVolume()
 	if err != nil {
 		os.Exit(1)
 	}
