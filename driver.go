@@ -44,12 +44,15 @@ func (driver glusterfsDriver) Create(request volume.Request) volume.Response {
 	log.Printf("Creating volume %s at %s\n", request.Name, mount)
 
 	_, err := os.Lstat(mount)
+	if err == nil {
+		return volume.Response{Err: fmt.Sprintf("Volume with name %s already exists", request.Name)}
+	}
 
 	if os.IsNotExist(err) {
 		return volume.Response{}
-	}
+	} 
 
-	return volume.Response{Err: err.Error()}
+	return volume.Response{Err: fmt.Sprintf("Volume with name %s already exists", request.Name)}
 }
 
 func (driver glusterfsDriver) Remove(request volume.Request) volume.Response {
