@@ -43,9 +43,11 @@ func (driver glusterfsDriver) Create(request volume.Request) volume.Response {
 	mount := driver.mountpoint(request.Name)
 	log.Printf("Creating volume %s at %s\n", request.Name, mount)
 
-	_, err := os.Lstat(mount)
-	if err == nil {
-		return volume.Response{Err: fmt.Sprintf("Volume with name %s already exists", request.Name)}
+	fi, err := os.Lstat(mount)
+	if err == nil && fi.IsDir() {
+		return volume.Response{}
+	} else if err == nil {
+		return volume.Response{Err: fmt.Sprintf("path with name %s already exists and is not a directory", request.Name)}
 	}
 
 	if os.IsNotExist(err) {
