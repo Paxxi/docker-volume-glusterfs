@@ -1,0 +1,13 @@
+{
+	"description": "glusterfs plugin for Docker",
+	"documentation": "https://docs.docker.com/engine/extend/plugins/",
+	"entrypoint": ["/go/bin/docker-volume-glusterfs"],
+	"network": {
+		   "type": "host"
+		   },
+	"interface" : {
+		   "types": ["docker.volumedriver/1.0"],
+		   "socket": "glusterfs.sock"
+	},
+	"capabilities": ["CAP_SYS_ADMIN"]
+}

@@ -1,0 +1,8 @@
+[Unit]
+Description=Gluster volume driver for Docker
+
+[Socket]
+ListenStream=/run/docker/plugins/glusterfs.sock
+
+[Install]
+WantedBy=sockets.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=Gluster volume driver for Docker
+Documentation=https://github.com/Paxxi/docker-volume-glusterfs
+After=network.target docker-volume-glusterfs.socket
+Requires=docker-volume-glusterfs.socket docker.service
+
+[Service]
+Type=simple
+# the default is not to use systemd for cgroups because the delegate issues still
+# exists and systemd currently does not support the cgroup feature set required
+# for containers run by docker
+ExecStart=/usr/bin/docker-volume-glusterfs -gfs-base /mnt/gfs -root my_gluster_volume -servers server1:server2:server3
+# kill only the docker process, not all processes in the cgroup
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

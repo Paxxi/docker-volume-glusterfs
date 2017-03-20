@@ -41,19 +41,23 @@ func (driver glusterfsDriver) Create(request volume.Request) volume.Response {
 	driver.mutex.Lock()
 	defer driver.mutex.Unlock()
 	mount := driver.mountpoint(request.Name)
-	log.Printf("Creating volume %s at %s\n", request.Name, mount)
+	log.Printf("Driver::Create Creating volume %s at %s\n", request.Name, mount)
 
 	fi, err := os.Lstat(mount)
 	if err == nil && fi.IsDir() {
+		log.Printf("Driver::Create volume exists and is a directory")
 		return volume.Response{}
 	} else if err == nil {
+		log.Print("Driver::Create volume exists and is not a directory")
 		return volume.Response{Err: fmt.Sprintf("path with name %s already exists and is not a directory", request.Name)}
 	}
 
 	if os.IsNotExist(err) {
+		log.Print("Driver::Create no such volume exists, will be created")
 		return volume.Response{}
-	} 
+	}
 
+	log.Print("Driver::Create something bad happened, volume exists but is not a directory or file")
 	return volume.Response{Err: fmt.Sprintf("Volume with name %s already exists", request.Name)}
 }
 
@@ -79,22 +83,26 @@ func (driver glusterfsDriver) Mount(request volume.MountRequest) volume.Response
 	driver.mutex.Lock()
 	defer driver.mutex.Unlock()
 	mount := driver.mountpoint(request.Name)
-	log.Printf("Mounting volume %s on %s\n", request.Name, mount)
+	log.Printf("Driver::Mount Mounting volume %s on %s\n", request.Name, mount)
 
-	err := os.MkdirAll(mount, 0755)
+	err := os.MkdirAll(mount, 0777)
 	if err == nil {
+		log.Printf("Driver::Mount created volume successfuly")
 		return volume.Response{Mountpoint: mount}
 	}
 
 	fi, err := os.Lstat(mount)
 	if err != nil {
+		log.Printf("Driver::Mount lstat failed %s", err.Error())
 		return volume.Response{Err: err.Error()}
 	}
 
 	if fi.IsDir() {
+		log.Printf("Driver::Mount volume is a directory, returning success")
 		return volume.Response{Mountpoint: mount}
 	}
 
+	log.Printf("Driver::Mount %v already exist and it's not a directory", mount)
 	return volume.Response{Err: fmt.Sprintf("%v already exist and it's not a directory", mount)}
 }
 
@@ -115,7 +123,7 @@ func (driver glusterfsDriver) Get(request volume.Request) volume.Response {
 	if err != nil || !fi.IsDir() {
 		return volume.Response{Err: fmt.Sprintf("Unable to find volume mounted on %s", mount)}
 	}
-	return volume.Response{Mountpoint: mount}
+	return volume.Response{Volume: &volume.Volume{Name: request.Name, Mountpoint: mount}}
 }
 
 func (driver glusterfsDriver) List(request volume.Request) volume.Response {
