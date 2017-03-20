@@ -23,16 +23,20 @@ type glusterfsDriver struct {
 	mountPath string
 	client    glusterfs.GlusterClient
 	servers   []string
+	uid       *int
+	gid       *int
 	mutex     *sync.Mutex
 }
 
-func newGlusterfsDriver(volumeID, mountPath string, servers []string) glusterfsDriver {
+func newGlusterfsDriver(volumeID, mountPath string, servers []string, uid *int, gid *int) glusterfsDriver {
 	driver := glusterfsDriver{
 		volumeID:  volumeID,
 		mountPath: mountPath,
 		client:    glusterfs.NewClient(),
 		servers:   servers,
 		mutex:     &sync.Mutex{},
+		uid:       uid,
+		gid:       gid,
 	}
 	return driver
 }
@@ -88,6 +92,9 @@ func (driver glusterfsDriver) Mount(request volume.MountRequest) volume.Response
 	err := os.MkdirAll(mount, 0777)
 	if err == nil {
 		log.Printf("Driver::Mount created volume successfuly")
+		if err = driver.chown(mount, driver.uid, driver.gid); err != nil {
+			log.Printf("Driver::Mount Failed to chown mount, continuing")
+		}
 		return volume.Response{Mountpoint: mount}
 	}
 
@@ -99,6 +106,9 @@ func (driver glusterfsDriver) Mount(request volume.MountRequest) volume.Response
 
 	if fi.IsDir() {
 		log.Printf("Driver::Mount volume is a directory, returning success")
+		if err = driver.chown(mount, driver.uid, driver.gid); err != nil {
+			log.Printf("Driver::Mount Failed to chown mount, continuing")
+		}
 		return volume.Response{Mountpoint: mount}
 	}
 
@@ -147,6 +157,14 @@ func (driver glusterfsDriver) List(request volume.Request) volume.Response {
 
 func (driver *glusterfsDriver) mountpoint(name string) string {
 	return filepath.Join(driver.mountPath, name)
+}
+
+func (driver *glusterfsDriver) chown(name string, uid *int, gid *int) error {
+	if uid == nil && gid == nil {
+		return nil
+	}
+
+	return os.Chown(name, *uid, *gid)
 }
 
 func (driver *glusterfsDriver) mountVolume() error {

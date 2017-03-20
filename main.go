@@ -19,6 +19,8 @@ var (
 	serversList = flag.String("servers", "", "List of glusterfs servers")
 	gfsBase     = flag.String("gfs-base", "/mnt/gfs", "Base directory where volumes are created in the cluster")
 	root        = flag.String("root", defaultDir, "GlusterFS volumes root directory")
+	uid         = flag.Int("uid", 0, "UID that should own the newly created mount dir")
+	gid         = flag.Int("gid", 0, "GID that should own the newly created mount dir")
 )
 
 func main() {
@@ -35,7 +37,7 @@ func main() {
 
 	servers := strings.Split(*serversList, ":")
 
-	driver := newGlusterfsDriver(*root, *gfsBase, servers)
+	driver := newGlusterfsDriver(*root, *gfsBase, servers, uid, gid)
 	handler := volume.NewHandler(driver)
 
 	// Try to unmount if there's anything mounted at our path
